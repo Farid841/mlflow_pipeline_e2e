@@ -1,4 +1,4 @@
-services:  
+services:
   postgres:
     image: postgres:18
     container_name: mlflow-postgres
@@ -48,61 +48,60 @@ services:
           "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
         mc mb --ignore-existing "myminio/${MINIO_BUCKET:-mlflow}"
     restart: "no"
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    image: mlflow-oidc:latest
+    container_name: mlflow-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      create-bucket:
+        condition: service_completed_successfully
+    environment:
+      # Configuration MLflow
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      MLFLOW_ARTIFACTS_DESTINATION: ${MLFLOW_ARTIFACTS_DESTINATION}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      MLFLOW_S3_IGNORE_TLS: "true"
+      MLFLOW_HOST: ${MLFLOW_HOST}
+      MLFLOW_PORT: ${MLFLOW_PORT}
   
-  mlflow:  
-    image: ghcr.io/mlflow/mlflow:${MLFLOW_VERSION}  
-    container_name: mlflow-server  
-    depends_on:  
-      postgres:  
-        condition: service_healthy  
-      minio:  
-        condition: service_healthy  
-      create-bucket:  
-        condition: service_completed_successfully  
-    environment:  
-      # Configuration MLflow existante  
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}  
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}  
-      MLFLOW_ARTIFACTS_DESTINATION: ${MLFLOW_ARTIFACTS_DESTINATION}  
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}  
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}  
-      # AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}  
-      MLFLOW_S3_IGNORE_TLS: "true"  
-      MLFLOW_HOST: ${MLFLOW_HOST}  
-      MLFLOW_PORT: ${MLFLOW_PORT}  
-  
-      # Configuration OIDC ajoutée  
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL}  
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}  
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}  
-      SECRET_KEY: ${SECRET_KEY}  
+      # Configuration OIDC
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      SECRET_KEY: ${SECRET_KEY}
       AUTOMATIC_LOGIN_REDIRECT: "true"
-      OIDC_SCOPE: "openid, email, profile"
+      OIDC_SCOPE: "openid email profile"
       OIDC_GROUPS_ATTRIBUTE: "groups"
       DEFAULT_LANDING_PAGE_IS_PERMISSIONS: "false"
-      DEFAULT_MLFLOW_PERMISSIONS: "READ"
-      OIDC_GROUP_NAME: '["mlflow"]'  
-      OIDC_ADMIN_GROUP_NAME: '["mlflow-admin"]'  
-    ports:  
-      - "${MLFLOW_PORT}:${MLFLOW_PORT}"  
-    command:  
-      - /bin/bash  
-      - -c  
-      - |  
-        pip install --no-cache-dir psycopg2-binary boto3
-        mlflow server --backend-store-uri "$${MLFLOW_BACKEND_STORE_URI}" --artifacts-destination "$${MLFLOW_ARTIFACTS_DESTINATION}" --serve-artifacts --host "$${MLFLOW_HOST}" --port "$${MLFLOW_PORT}"  
-    healthcheck:  
-      test:  
-        [  
-          "CMD",  
-          "python",  
-          "-c",  
-          "import urllib.request; urllib.request.urlopen('http://localhost:${MLFLOW_PORT}/health')",  
-        ]  
-      interval: 10s  
-      timeout: 5s  
-      retries: 30  
-  
-volumes:  
-  postgres_data:  
+      DEFAULT_MLFLOW_PERMISSIONS: "MANAGE"
+      OIDC_GROUP_NAME: "mlflow"
+      OIDC_ADMIN_GROUP_NAME: "mlflow-admin"
+      SKIP_USER_EXISTENCE_CHECK: "true"
+    ports:
+      - "${MLFLOW_PORT}:${MLFLOW_PORT}"
+    volumes:
+      - ./scripts:/app/scripts
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:${MLFLOW_PORT}/health"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres_data:
   minio_data:
